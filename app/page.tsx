@@ -50,8 +50,24 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex flex-col w-full max-w-2xl mx-auto py-12 min-h-screen bg-zinc-950 text-white">
-      <h1 className="text-4xl font-bold text-center mb-12">我的第一个 LLM 聊天机器人 🎉</h1>
+    <div className="relative flex flex-col w-full max-w-2xl mx-auto py-12 min-h-screen bg-zinc-950 text-white">
+      <button
+        type="button"
+        className="absolute right-6 top-6 text-sm text-zinc-400 hover:text-zinc-200 underline underline-offset-4"
+        onClick={() => {
+          setMessages([]);
+          setInput('');
+          if (typeof window !== 'undefined') {
+            window.localStorage.removeItem(STORAGE_KEY);
+          }
+        }}
+      >
+        清空对话
+      </button>
+
+      <h1 className="mt-4 text-4xl font-bold text-center mb-12">
+        我的第一个 LLM 聊天机器人 🎉
+      </h1>
 
       {error && (
         <div className="mx-6 mb-4 rounded-xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-200">
