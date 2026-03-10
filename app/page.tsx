@@ -83,14 +83,13 @@ function ChatContent() {
     event.preventDefault();
     if (!input.trim() || status !== 'ready') return;
 
-    let currentChatId = chatIdFromUrl;
-    if (!currentChatId) {
-      currentChatId = crypto.randomUUID();
+    const text = input.trim();
+    const currentChatId = chatIdFromUrl || crypto.randomUUID();
+    setInput('');
+    await sendMessage({ text }, { body: { chatId: currentChatId } });
+    if (!chatIdFromUrl) {
       router.replace(`/?chat=${currentChatId}`);
     }
-
-    await sendMessage({ text: input }, { body: { chatId: currentChatId } });
-    setInput('');
     fetchChats();
   };
 

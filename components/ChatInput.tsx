@@ -22,7 +22,7 @@ export function ChatInput({ input, isLoading, onChange, onSubmit }: ChatInputPro
       />
       {isLoading && (
         <div className="text-center mt-3 text-blue-400">
-          DeepSeek 正在思考...
+          森奇正在回复…
         </div>
       )}
     </form>
