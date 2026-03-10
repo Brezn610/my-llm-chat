@@ -61,7 +61,7 @@ function ChatContent() {
   const { messages, sendMessage, status, error, regenerate, setMessages } = useChat({
     transport,
     onFinish,
-    body: { timezone: userTimezone },
+    ...({ body: { timezone: userTimezone } } as { body?: Record<string, unknown> }),
   });
 
   const isLoading = status === 'submitted' || status === 'streaming';
