@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
-import { getClientIp } from '@/lib/visitor';
+import { getOrCreateVisitorId, setVisitorCookie } from '@/lib/visitor';
 import { apiErrorResponse } from '@/lib/api-error';
 import type { UIMessage } from 'ai';
 
@@ -14,7 +14,7 @@ export async function GET(
   }
   try {
     const { id } = await params;
-    const visitorId = getClientIp(req);
+    const { visitorId, isNew: isNewVisitor } = getOrCreateVisitorId(req);
 
     const { data: chat, error: chatError } = await supabase
       .from('chats')
@@ -36,7 +36,9 @@ export async function GET(
     if (error) throw error;
 
     const messages = (data ?? []).map((row) => row.message);
-    return NextResponse.json(messages);
+    const res = NextResponse.json(messages);
+    if (isNewVisitor) setVisitorCookie(res, visitorId);
+    return res;
   } catch (err) {
     console.error('[Chat API][数据库] GET /api/chats/[id]/messages error:', err);
     return apiErrorResponse('db', '获取消息失败', 500);
@@ -54,7 +56,7 @@ export async function POST(
   }
   try {
     const { id } = await params;
-    const visitorId = getClientIp(req);
+    const { visitorId, isNew: isNewVisitor } = getOrCreateVisitorId(req);
 
     const { data: chat, error: chatError } = await supabase
       .from('chats')
@@ -84,7 +86,9 @@ export async function POST(
 
     const { error } = await supabase.from('messages').insert({ chat_id: id, message });
     if (error) throw error;
-    return NextResponse.json({ ok: true });
+    const res = NextResponse.json({ ok: true });
+    if (isNewVisitor) setVisitorCookie(res, visitorId);
+    return res;
   } catch (err) {
     console.error('[Chat API][数据库] POST /api/chats/[id]/messages error:', err);
     return apiErrorResponse('db', '保存消息失败', 500);

@@ -1,6 +1,49 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 
+const QWEATHER_KEY = process.env.QWEATHER_API_KEY;
+const QWEATHER_HOST = process.env.QWEATHER_API_HOST || 'api.qweather.com'; // 未配置 Host 时用公共域名（2026 年起可能停用）
+
+/** 和风天气：城市搜索 + 实时天气，原生支持中文 */
+async function fetchWeatherQWeather(city: string): Promise<{ city: string; temp: number; desc: string }> {
+  const name = city.trim();
+  const geoUrl = `https://${QWEATHER_HOST}/geo/v2/city/lookup?location=${encodeURIComponent(name)}&range=cn&number=1`;
+  const geoRes = await fetch(geoUrl, {
+    headers: { 'X-QW-Api-Key': QWEATHER_KEY! },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!geoRes.ok) {
+    return { city: name, temp: 0, desc: `查询失败：${geoRes.status}` };
+  }
+  const geoData = (await geoRes.json()) as {
+    code?: string;
+    location?: Array<{ name: string; id: string }>;
+  };
+  const first = geoData.location?.[0];
+  if (!first || geoData.code !== '200') {
+    return { city: name, temp: 0, desc: `未找到城市：${name}` };
+  }
+  const weatherUrl = `https://${QWEATHER_HOST}/v7/weather/now?location=${first.id}`;
+  const weatherRes = await fetch(weatherUrl, {
+    headers: { 'X-QW-Api-Key': QWEATHER_KEY! },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!weatherRes.ok) {
+    return { city: first.name, temp: 0, desc: `天气接口异常：${weatherRes.status}` };
+  }
+  const weatherData = (await weatherRes.json()) as {
+    code?: string;
+    now?: { temp?: string; text?: string };
+  };
+  const now = weatherData.now;
+  if (weatherData.code !== '200' || !now) {
+    return { city: first.name, temp: 0, desc: '暂无实时天气数据' };
+  }
+  const temp = Number(now.temp) || 0;
+  const desc = now.text || '—';
+  return { city: first.name, temp, desc };
+}
+
 /** 中文城市名 → 英文名（Open-Meteo 地理编码对中文支持差） */
 const CITY_ZH_TO_EN: Record<string, string> = {
   北京: 'Beijing', 上海: 'Shanghai', 广州: 'Guangzhou', 深圳: 'Shenzhen', 杭州: 'Hangzhou',
@@ -24,7 +67,8 @@ function weatherCodeToDesc(code: number): string {
   return map[code] ?? `天气代码 ${code}`;
 }
 
-async function fetchWeather(city: string): Promise<{ city: string; temp: number; desc: string }> {
+/** Open-Meteo：无 key，需英文城市名或内置映射 */
+async function fetchWeatherOpenMeteo(city: string): Promise<{ city: string; temp: number; desc: string }> {
   const searchName = CITY_ZH_TO_EN[city.trim()] ?? city;
   const geoRes = await fetch(
     `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchName)}&count=1`,
@@ -49,9 +93,16 @@ async function fetchWeather(city: string): Promise<{ city: string; temp: number;
   return { city: first.name, temp, desc: weatherCodeToDesc(code) };
 }
 
-/** 查询指定城市天气（Function Calling 工具，使用 Open-Meteo 免费 API） */
+async function fetchWeather(city: string): Promise<{ city: string; temp: number; desc: string }> {
+  if (QWEATHER_KEY) {
+    return fetchWeatherQWeather(city);
+  }
+  return fetchWeatherOpenMeteo(city);
+}
+
+/** 查询指定城市天气（优先和风天气-中文，未配置 key 时用 Open-Meteo） */
 export const getWeatherTool = tool({
-  description: '查询指定城市的当前天气（温度与天气现象）。当用户问某地天气时使用。',
+  description: '查询指定城市的当前天气（温度与天气现象）。当用户问某地天气时使用。支持中文城市名，如：北京、上海、深圳。',
   inputSchema: z.object({
     city: z.string().describe('城市名称，如：北京、上海、深圳'),
   }),

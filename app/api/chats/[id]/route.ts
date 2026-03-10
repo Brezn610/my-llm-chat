@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
-import { getClientIp } from '@/lib/visitor';
+import { getOrCreateVisitorId, setVisitorCookie } from '@/lib/visitor';
 
 export async function DELETE(
   req: Request,
@@ -12,7 +12,7 @@ export async function DELETE(
   }
   try {
     const { id } = await params;
-    const visitorId = getClientIp(req);
+    const { visitorId, isNew: isNewVisitor } = getOrCreateVisitorId(req);
 
     const { data: chat, error: fetchError } = await supabase
       .from('chats')
@@ -28,7 +28,9 @@ export async function DELETE(
     const { error } = await supabase.from('chats').delete().eq('id', id);
 
     if (error) throw error;
-    return NextResponse.json({ ok: true });
+    const res = NextResponse.json({ ok: true });
+    if (isNewVisitor) setVisitorCookie(res, visitorId);
+    return res;
   } catch (err) {
     console.error('DELETE /api/chats/[id] error:', err);
     return NextResponse.json(

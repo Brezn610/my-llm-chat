@@ -1,8 +1,8 @@
 import { streamText, convertToModelMessages, generateId, type UIMessage } from 'ai';
 import { getSupabase } from '@/lib/supabase';
-import { getClientIp } from '@/lib/visitor';
+import { getClientIp, getOrCreateVisitorId, setVisitorCookie } from '@/lib/visitor';
 import { apiErrorResponse } from '@/lib/api-error';
-import { CHAT_MODEL, SYSTEM_PROMPT, chatTools, chatStopWhen } from '@/lib/llm';
+import { CHAT_MODEL, SYSTEM_PROMPT, getChatTools, chatStopWhen } from '@/lib/llm';
 
 export const maxDuration = 30;
 
@@ -43,14 +43,15 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { messages, chatId }: { messages: UIMessage[]; chatId?: string } = body;
+    const { messages, chatId, timezone }: { messages: UIMessage[]; chatId?: string; timezone?: string } = body;
+    const tools = getChatTools(timezone);
 
     if (!messages?.length) {
       return apiErrorResponse('api', '请求缺少 messages', 400);
     }
 
     const id = chatId || crypto.randomUUID();
-    const visitorId = getClientIp(req);
+    const { visitorId, isNew: isNewVisitor } = getOrCreateVisitorId(req);
 
     if (chatId) {
       const { data: existing } = await supabase
@@ -90,8 +91,8 @@ export async function POST(req: Request) {
     const result = streamText({
       model: CHAT_MODEL,
       system: SYSTEM_PROMPT,
-      messages: await convertToModelMessages(messages, { tools: chatTools }),
-      tools: chatTools,
+      messages: await convertToModelMessages(messages, { tools }),
+      tools,
       stopWhen: chatStopWhen,
     });
 
@@ -105,6 +106,7 @@ export async function POST(req: Request) {
       },
     });
     response.headers.set('X-Chat-Id', id);
+    if (isNewVisitor) setVisitorCookie(response, visitorId);
     return response;
   } catch (error) {
     console.error('[Chat API][模型/环境]', error);

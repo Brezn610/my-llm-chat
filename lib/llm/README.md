@@ -10,7 +10,7 @@
 - **`tools/`**  
   Function Calling 工具，每个能力一个文件，在 `tools/index.ts` 汇总为 `chatTools`。
   - `get-current-date.ts`：当前日期与星期几
-  - `get-weather.ts`：城市天气（Open-Meteo）
+  - `get-weather.ts`：城市天气。配置 `QWEATHER_API_KEY`（及可选 `QWEATHER_API_HOST`）时使用和风天气（中文城市名、中文描述）；未配置则回退到 Open-Meteo（需内置中文→英文城市映射）
   - 新增工具：在 `tools/` 下新增 `xxx.ts`，在 `tools/index.ts` 里挂到 `chatTools` 即可。
 
 - **`index.ts`**  

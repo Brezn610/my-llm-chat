@@ -25,7 +25,34 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* 深色页面时让浏览器用深色滚动条等，避免白轨道 */
+@media (prefers-color-scheme: dark) {
+  html { color-scheme: dark; }
+}
+
 /* 深色气泡内的公式使用继承文字颜色，保证可见 */
 .chat-markdown .katex {
   color: inherit;
+}
+
+/* 深色主题滚动条：轨道与背景一致，滑块为白色（消息区 + 侧栏列表） */
+.scrollbar-dark {
+  scrollbar-color: #fff #09090b;
+  scrollbar-width: thin;
+}
+.scrollbar-dark::-webkit-scrollbar {
+  width: 10px;
+}
+.scrollbar-dark::-webkit-scrollbar-track {
+  background: #09090b !important;
+}
+.scrollbar-dark::-webkit-scrollbar-thumb {
+  background: #fff !important;
+  border-radius: 5px;
+}
+.scrollbar-dark::-webkit-scrollbar-thumb:hover {
+  background: #e4e4e7 !important;
+}
+.scrollbar-dark::-webkit-scrollbar-button {
+  display: none;
 }
