@@ -24,3 +24,8 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* 深色气泡内的公式使用继承文字颜色，保证可见 */
+.chat-markdown .katex {
+  color: inherit;
+}
