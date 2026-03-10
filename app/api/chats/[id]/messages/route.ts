@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
+import { apiErrorResponse } from '@/lib/api-error';
 
 export async function GET(
   _req: Request,
@@ -7,7 +8,7 @@ export async function GET(
 ) {
   const supabase = getSupabase();
   if (!supabase) {
-    return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    return apiErrorResponse('db', '未配置数据库', 503);
   }
   try {
     const { id } = await params;
@@ -22,10 +23,7 @@ export async function GET(
     const messages = (data ?? []).map((row) => row.message);
     return NextResponse.json(messages);
   } catch (err) {
-    console.error('GET /api/chats/[id]/messages error:', err);
-    return NextResponse.json(
-      { error: 'Failed to fetch messages' },
-      { status: 500 }
-    );
+    console.error('[Chat API][数据库] GET /api/chats/[id]/messages error:', err);
+    return apiErrorResponse('db', '获取消息失败', 500);
   }
 }

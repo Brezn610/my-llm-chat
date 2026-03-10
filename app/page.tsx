@@ -1,19 +1,38 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 import { ChatMessages } from '@/components/ChatMessages';
 import { ChatInput } from '@/components/ChatInput';
+import { ChatErrorDebug } from '@/components/ChatErrorDebug';
 
 type ChatItem = { id: string; title: string; created_at: string };
+
+/** 自定义 fetch：接口非 2xx 时读出后端返回的 error 文案并抛出，便于分层展示 */
+async function chatFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const res = await fetch(input, init);
+  if (!res.ok && String(input).includes('/api/chat')) {
+    const ct = res.headers.get('content-type');
+    if (ct?.includes('application/json')) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? res.statusText);
+    }
+  }
+  return res;
+}
 
 function ChatContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const chatIdFromUrl = searchParams.get('chat');
 
-  const { messages, sendMessage, status, error, regenerate, setMessages } = useChat();
+  const transport = useMemo(
+    () => new DefaultChatTransport({ api: '/api/chat', fetch: chatFetch }),
+    []
+  );
+  const { messages, sendMessage, status, error, regenerate, setMessages } = useChat({ transport });
   const [input, setInput] = useState('');
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [loadingChats, setLoadingChats] = useState(true);
@@ -215,16 +234,7 @@ function ChatContent() {
         </h1>
 
         {error && (
-          <div className="mx-6 mb-4 rounded-xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-200">
-            出错了，请稍后重试。
-            <button
-              type="button"
-              onClick={() => regenerate()}
-              className="ml-3 underline underline-offset-4 hover:text-red-100"
-            >
-              重试
-            </button>
-          </div>
+          <ChatErrorDebug error={error} onRetry={() => regenerate()} />
         )}
 
         <div className="flex-1 px-6 space-y-8 overflow-y-auto pb-32">

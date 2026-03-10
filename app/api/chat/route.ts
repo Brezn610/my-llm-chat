@@ -1,5 +1,6 @@
 import { streamText, convertToModelMessages, generateId, type UIMessage } from 'ai';
 import { getSupabase } from '@/lib/supabase';
+import { apiErrorResponse } from '@/lib/api-error';
 
 // 可选：限制最长流式响应时间（秒）
 export const maxDuration = 30;
@@ -39,17 +40,7 @@ function checkRateLimit(req: Request): Response | null {
   }
 
   if (record.count >= RATE_LIMIT_MAX_REQUESTS) {
-    return new Response(
-      JSON.stringify({
-        error: '今日请求次数已用完，请明天再试。',
-      }),
-      {
-        status: 429,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      },
-    );
+    return apiErrorResponse('rate_limit', '今日请求次数已用完，请明天再试。', 429);
   }
 
   record.count += 1;
@@ -66,9 +57,10 @@ export async function POST(req: Request) {
 
   const supabase = getSupabase();
   if (!supabase) {
-    return new Response(
-      JSON.stringify({ error: 'Database not configured. Add NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to .env.local' }),
-      { status: 503, headers: { 'Content-Type': 'application/json' } }
+    return apiErrorResponse(
+      'db',
+      '未配置数据库。请添加 NEXT_PUBLIC_SUPABASE_URL 和 SUPABASE_SERVICE_ROLE_KEY 到 .env.local',
+      503
     );
   }
 
@@ -77,10 +69,7 @@ export async function POST(req: Request) {
     const { messages, chatId }: { messages: UIMessage[]; chatId?: string } = body;
 
     if (!messages?.length) {
-      return new Response(
-        JSON.stringify({ error: 'Messages required' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
+      return apiErrorResponse('api', '请求缺少 messages', 400);
     }
 
     const id = chatId || crypto.randomUUID();
@@ -94,7 +83,7 @@ export async function POST(req: Request) {
       );
 
     if (chatError) {
-      console.error('Chat upsert error:', chatError);
+      console.error('[Chat API][数据库] Chat upsert error:', chatError);
     }
 
     // 保存最后一条用户消息，并更新会话标题（首条消息时）
@@ -133,16 +122,8 @@ export async function POST(req: Request) {
     response.headers.set('X-Chat-Id', id);
     return response;
   } catch (error) {
-    console.error('Chat API error:', error);
-
-    return new Response(
-      JSON.stringify({ error: 'Chat service unavailable, please try again later.' }),
-      {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      },
-    );
+    console.error('[Chat API][模型/环境]', error);
+    const message = error instanceof Error ? error.message : '服务暂不可用，请稍后重试。';
+    return apiErrorResponse('model', message, 500);
   }
 }
