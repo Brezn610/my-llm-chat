@@ -32,13 +32,33 @@ function ChatContent() {
     () => new DefaultChatTransport({ api: '/api/chat', fetch: chatFetch }),
     []
   );
-  const { messages, sendMessage, status, error, regenerate, setMessages } = useChat({ transport });
   const [input, setInput] = useState('');
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false); // 小屏默认收起，大屏会通过 useEffect 设为 true
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastChatIdRef = useRef<string | null>(null);
+
+  const onFinish = useCallback(async ({ message }: { message: { id?: string; role?: string } }) => {
+    const cid = lastChatIdRef.current;
+    if (cid && message?.role === 'assistant' && message?.id) {
+      try {
+        await fetch(`/api/chats/${cid}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message }),
+        });
+      } catch (e) {
+        console.error('Failed to persist assistant message:', e);
+      }
+    }
+  }, []);
+
+  const { messages, sendMessage, status, error, regenerate, setMessages } = useChat({
+    transport,
+    onFinish,
+  });
 
   const isLoading = status === 'submitted' || status === 'streaming';
 
@@ -110,6 +130,7 @@ function ChatContent() {
 
     const text = input.trim();
     const currentChatId = chatIdFromUrl || crypto.randomUUID();
+    lastChatIdRef.current = currentChatId;
     setInput('');
     await sendMessage({ text }, { body: { chatId: currentChatId } });
     if (!chatIdFromUrl) {

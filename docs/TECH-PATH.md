@@ -52,7 +52,7 @@
 
 - **协议**：使用 AI SDK 的 **UIMessage 流**（`toUIMessageStreamResponse()`），前端 `useChat` 消费流并实时更新 `messages`。（曾用 `toTextStreamResponse()` 导致前端收不到结构化消息、看不到回复，改为 UIMessage 流后恢复正常。）
 - **顺序**：先发用户消息再更新 URL（新对话时先 `sendMessage` 再 `router.replace`），避免因先改 URL 触发「加载空会话」导致发送空消息。（曾遇到「输入消息一直卡住」即因此：先改 URL 会拉空消息并清空状态，请求带空 messages 导致异常或卡住，改为先发再改 URL 后解决。）
-- **人设**：`streamText` 的 `system` 固定为「你是森奇，一个友好、专业的 AI 助手。」
+- **人设与模型**：由 `lib/llm` 统一配置：`CHAT_MODEL`、`SYSTEM_PROMPT`、`chatTools`、`chatStopWhen`；API 仅做组合调用。
 
 ### 3.2 持久化与多会话
 
@@ -98,27 +98,37 @@
 
 ---
 
-## 四、关键文件与职责
+## 四、代码分层（LLM 与前端）
+
+- **LLM 层**（`lib/llm/`）：模型、系统提示、Function Calling 工具。新增/修改工具或人设在此目录完成，API 通过组合使用。
+- **前端渲染层**（`components/chat/`）：助手消息的 Markdown 与公式渲染（`AssistantMessageContent`）、单条气泡（`MessageBubble`）。后续加代码高亮、表格样式等只改此处。
+- **API 层**（`app/api/chat/route.ts`）：限流、DB、visitor、从 `lib/llm` 取配置并调用 `streamText`、持久化，不内联工具或提示词。
+
+## 五、关键文件与职责
 
 | 路径 | 职责 |
 |------|------|
+| `lib/llm/config.ts` | 模型 ID、系统提示、工具调用停止条件 |
+| `lib/llm/tools/*.ts` | 各 Function Calling 工具；`tools/index.ts` 汇总为 `chatTools` |
+| `app/api/chat/route.ts` | 限流、DB 与 visitor 校验、组合 lib/llm 调用 streamText、UIMessage 持久化、分层错误 |
 | `app/page.tsx` | 主页面：useChat、侧栏/主区布局、URL 与 chatId 同步、发送/新对话/删除逻辑、错误展示 |
-| `app/layout.tsx` | 根布局、metadata（标题/描述/图标）、字体 |
-| `app/api/chat/route.ts` | 限流、DB 与 visitor 校验、streamText、UIMessage 持久化、分层错误 |
+| `app/layout.tsx` | 根布局、metadata、字体、KaTeX CSS |
+| `components/ChatMessages.tsx` | 消息列表，每条委托给 MessageBubble |
+| `components/chat/MessageBubble.tsx` | 单条消息气泡，按 role 选渲染方式 |
+| `components/chat/AssistantMessageContent.tsx` | 助手内容：Markdown + 数学公式（扩展渲染能力在此修改） |
+| `components/ChatInput.tsx` | 输入框、提交、加载态文案 |
+| `components/ChatErrorDebug.tsx` | 解析 error.message 中的 [层级]，展示排查建议 |
 | `app/api/chats/route.ts` | 按 visitor_id 拉取会话列表 |
 | `app/api/chats/[id]/messages/route.ts` | 按 chat_id 拉取消息列表 |
 | `app/api/chats/[id]/route.ts` | 删除会话（CASCADE 删消息） |
 | `lib/supabase.ts` | Supabase 客户端（getSupabase），未配置时返回 null |
 | `lib/visitor.ts` | getClientIp：从请求头解析访问者 IP |
 | `lib/api-error.ts` | apiErrorResponse：统一错误 JSON + 日志打标 |
-| `components/ChatMessages.tsx` | 渲染 messages 列表（UIMessage.parts） |
-| `components/ChatInput.tsx` | 输入框、提交、加载态文案 |
-| `components/ChatErrorDebug.tsx` | 解析 error.message 中的 [层级]，展示排查建议 |
 | `supabase-schema.sql` | chats / messages 建表及索引、visitor_id 说明 |
 
 ---
 
-## 五、排查问题时的分层顺序
+## 六、排查问题时的分层顺序
 
 1. **前端**：Console 报错、Network 中 `POST /api/chat` 的 status 与 response body（是否含 `[层级]`）。
 2. **接口**：终端或部署日志中搜索 `[Chat API]`，根据 `[限流]` / `[数据库]` / `[接口]` / `[模型/环境]` 定位层级。
@@ -127,7 +137,7 @@
 
 ---
 
-## 六、遇到的问题与解决
+## 七、遇到的问题与解决
 
 开发与上线过程中遇到过的典型问题及对应处理，便于以后遇到类似情况时对照。
 
@@ -144,9 +154,9 @@
 
 ---
 
-## 七、后续可扩展方向
+## 八、后续可扩展方向
 
 - **登录与按账号限流**：接入 Auth，会话与限流按 `user_id` 而非 IP。
 - **限流持久化**：多实例时用 Vercel KV / Upstash Redis 存储计数。
 - **Markdown 渲染**：对助手回复做 Markdown 解析与渲染。
-- **工具调用 (Tools)**：已在 `streamText` 中配置 `get_current_date`（当前日期/星期几）与 `get_weather`（Open-Meteo 免费 API 查天气），`stopWhen: stepCountIs(5)` 允许多步调用；持久化改为 `toUIMessageStreamResponse` 的 `onFinish` 中保存 `responseMessage`。
+- **工具调用 (Tools)**：由 `lib/llm/tools/` 定义并汇总，API 组合使用；新增工具在该目录添加并在 `tools/index.ts` 挂载即可。助手回复的 Markdown/公式渲染在 `components/chat/AssistantMessageContent.tsx`，扩展展示能力在此修改。
