@@ -1,4 +1,5 @@
-import { streamText, convertToModelMessages, type UIMessage } from 'ai';
+import { streamText, convertToModelMessages, generateId, type UIMessage } from 'ai';
+import { getSupabase } from '@/lib/supabase';
 
 // 可选：限制最长流式响应时间（秒）
 export const maxDuration = 30;
@@ -63,16 +64,74 @@ export async function POST(req: Request) {
     return rateLimitResponse;
   }
 
+  const supabase = getSupabase();
+  if (!supabase) {
+    return new Response(
+      JSON.stringify({ error: 'Database not configured. Add NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to .env.local' }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
-    const { messages }: { messages: UIMessage[] } = await req.json();
+    const body = await req.json();
+    const { messages, chatId }: { messages: UIMessage[]; chatId?: string } = body;
+
+    if (!messages?.length) {
+      return new Response(
+        JSON.stringify({ error: 'Messages required' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const id = chatId || crypto.randomUUID();
+
+    // 创建会话（若不存在）
+    const { error: chatError } = await supabase
+      .from('chats')
+      .upsert(
+        { id, title: '新对话', created_at: new Date().toISOString() },
+        { onConflict: 'id', ignoreDuplicates: true }
+      );
+
+    if (chatError) {
+      console.error('Chat upsert error:', chatError);
+    }
+
+    // 保存最后一条用户消息，并更新会话标题（首条消息时）
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.role === 'user') {
+      await supabase.from('messages').insert({
+        chat_id: id,
+        message: lastMsg,
+      });
+      const textPart = lastMsg.parts?.find((p): p is { type: 'text'; text: string } => p.type === 'text');
+      const text = textPart?.text ?? '';
+      if (text) {
+        const title = text.slice(0, 30).trim() || '新对话';
+        await supabase.from('chats').update({ title }).eq('id', id);
+      }
+    }
 
     const result = streamText({
       model: 'deepseek/deepseek-v3.2',
+      system: '你是森奇，一个友好、专业的 AI 助手。',
       messages: await convertToModelMessages(messages),
+      onFinish: async ({ text }) => {
+        const assistantMsg: UIMessage = {
+          id: generateId(),
+          role: 'assistant',
+          parts: [{ type: 'text', text }],
+        };
+        await supabase.from('messages').insert({
+          chat_id: id,
+          message: assistantMsg,
+        });
+      },
     });
 
-    // 返回 UIMessage 流，才能被 useChat 正确解析并更新 messages
-    return result.toUIMessageStreamResponse();
+    const response = result.toUIMessageStreamResponse();
+    response.headers.set('X-Chat-Id', id);
+    return response;
   } catch (error) {
     console.error('Chat API error:', error);
 

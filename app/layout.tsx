@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "小智聊天机器人 - 免费 AI 聊天",
+  title: "森林奇谈机器人 - 免费 AI 聊天",
   description: "用 DeepSeek 驱动的智能助手，随时陪你聊天～",
   icons: {
     icon: "/favicon.svg",
