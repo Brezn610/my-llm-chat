@@ -18,8 +18,18 @@ function ChatContent() {
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // 小屏默认收起，大屏会通过 useEffect 设为 true
 
   const isLoading = status === 'submitted' || status === 'streaming';
+
+  // 大屏默认展开侧栏，小屏默认收起
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    setSidebarOpen(mq.matches);
+    const handler = () => setSidebarOpen(mq.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   // 加载会话列表
   const fetchChats = useCallback(async () => {
@@ -88,6 +98,7 @@ function ChatContent() {
     router.replace('/');
     setMessages([]);
     setInput('');
+    setSidebarOpen(false); // 小屏时选中后收起侧栏
   };
 
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
@@ -108,15 +119,44 @@ function ChatContent() {
 
   return (
     <div className="flex min-h-screen bg-zinc-950 text-white">
-      {/* 左侧会话列表 */}
-      <aside className="w-56 shrink-0 border-r border-zinc-800 flex flex-col">
+      {/* 小屏时侧栏打开时的遮罩，点击收起 */}
+      {sidebarOpen && (
         <button
           type="button"
-          className="m-3 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium"
-          onClick={handleNewChat}
-        >
-          新对话
-        </button>
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-label="收起侧栏"
+        />
+      )}
+
+      {/* 左侧会话列表：大屏为侧栏，小屏为抽屉 */}
+      <aside
+        className={
+          'z-40 flex flex-col border-r border-zinc-800 bg-zinc-950 transition-[width,transform] duration-200 ease-out ' +
+          (sidebarOpen ? 'w-56' : 'w-0 min-w-0 overflow-hidden ') +
+          'md:relative md:shrink-0 ' +
+          'max-md:fixed max-md:inset-y-0 max-md:left-0 ' +
+          (sidebarOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full')
+        }
+      >
+        <div className="flex h-14 w-56 shrink-0 items-center gap-2 border-b border-zinc-800 px-3">
+          <button
+            type="button"
+            className="m-0 flex-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium"
+            onClick={handleNewChat}
+          >
+            新对话
+          </button>
+          <button
+            type="button"
+            className="shrink-0 p-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white"
+            onClick={() => setSidebarOpen(false)}
+            title="收起对话列表"
+            aria-label="收起对话列表"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+        </div>
         <div className="flex-1 overflow-y-auto px-2 pb-4">
           {loadingChats ? (
             <p className="text-zinc-500 text-sm px-2 py-2">加载中...</p>
@@ -133,7 +173,10 @@ function ChatContent() {
                         ? 'bg-zinc-700 text-white'
                         : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
                     }`}
-                    onClick={() => router.replace(`/?chat=${c.id}`)}
+                    onClick={() => {
+                      router.replace(`/?chat=${c.id}`);
+                      setSidebarOpen(false); // 小屏时选中后收起侧栏
+                    }}
                   >
                     {c.title}
                   </button>
@@ -154,7 +197,20 @@ function ChatContent() {
       </aside>
 
       {/* 主聊天区 */}
-      <main className="relative flex flex-1 flex-col max-w-2xl mx-auto py-12 min-h-screen">
+      <main className="relative flex flex-1 flex-col max-w-2xl mx-auto py-12 min-h-screen min-w-0">
+        {/* 侧栏收起时显示「打开对话列表」按钮 */}
+        {!sidebarOpen && (
+          <button
+            type="button"
+            className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-lg bg-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white"
+            onClick={() => setSidebarOpen(true)}
+            title="打开对话列表"
+            aria-label="打开对话列表"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+            对话列表
+          </button>
+        )}
         <h1 className="text-4xl font-bold text-center mb-12">
           森林奇谈机器人 🎉
         </h1>
