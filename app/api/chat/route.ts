@@ -1,5 +1,6 @@
 import { streamText, convertToModelMessages, generateId, type UIMessage } from 'ai';
 import { getSupabase } from '@/lib/supabase';
+import { getClientIp } from '@/lib/visitor';
 import { apiErrorResponse } from '@/lib/api-error';
 
 // 可选：限制最长流式响应时间（秒）
@@ -15,18 +16,6 @@ type RateLimitRecord = {
 };
 
 const ipUsage = new Map<string, RateLimitRecord>();
-
-function getClientIp(req: Request): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) {
-    return forwarded.split(',')[0]?.trim() || 'unknown';
-  }
-
-  const realIp = req.headers.get('x-real-ip');
-  if (realIp) return realIp;
-
-  return 'unknown';
-}
 
 function checkRateLimit(req: Request): Response | null {
   const ip = getClientIp(req);
@@ -73,17 +62,38 @@ export async function POST(req: Request) {
     }
 
     const id = chatId || crypto.randomUUID();
+    const visitorId = getClientIp(req);
 
-    // 创建会话（若不存在）
-    const { error: chatError } = await supabase
-      .from('chats')
-      .upsert(
-        { id, title: '新对话', created_at: new Date().toISOString() },
-        { onConflict: 'id', ignoreDuplicates: true }
-      );
+    if (chatId) {
+      // 可能已有会话（续聊）或前端刚生成 id 的首条消息：先查是否存在
+      const { data: existing } = await supabase
+        .from('chats')
+        .select('id, visitor_id')
+        .eq('id', id)
+        .single();
 
-    if (chatError) {
-      console.error('[Chat API][数据库] Chat upsert error:', chatError);
+      if (existing) {
+        if (existing.visitor_id !== visitorId) {
+          return apiErrorResponse('api', '对话不存在或无权操作', 403);
+        }
+        // 归属正确，直接续写
+      } else {
+        // 会话不存在：首条消息，创建并绑定当前访问者
+        const { error: chatError } = await supabase
+          .from('chats')
+          .insert({ id, visitor_id: visitorId, title: '新对话', created_at: new Date().toISOString() });
+        if (chatError) {
+          console.error('[Chat API][数据库] Chat insert error:', chatError);
+        }
+      }
+    } else {
+      // 无 chatId：新会话，创建并绑定当前访问者
+      const { error: chatError } = await supabase
+        .from('chats')
+        .insert({ id, visitor_id: visitorId, title: '新对话', created_at: new Date().toISOString() });
+      if (chatError) {
+        console.error('[Chat API][数据库] Chat insert error:', chatError);
+      }
     }
 
     // 保存最后一条用户消息，并更新会话标题（首条消息时）

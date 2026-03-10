@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
+import { getClientIp } from '@/lib/visitor';
 import { apiErrorResponse } from '@/lib/api-error';
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const supabase = getSupabase();
@@ -12,6 +13,19 @@ export async function GET(
   }
   try {
     const { id } = await params;
+    const visitorId = getClientIp(req);
+
+    const { data: chat, error: chatError } = await supabase
+      .from('chats')
+      .select('id')
+      .eq('id', id)
+      .eq('visitor_id', visitorId)
+      .single();
+
+    if (chatError || !chat) {
+      return apiErrorResponse('api', '对话不存在或无权查看', 404);
+    }
+
     const { data, error } = await supabase
       .from('messages')
       .select('message')

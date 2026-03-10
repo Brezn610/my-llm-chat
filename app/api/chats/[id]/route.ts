@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
+import { getClientIp } from '@/lib/visitor';
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const supabase = getSupabase();
@@ -11,6 +12,19 @@ export async function DELETE(
   }
   try {
     const { id } = await params;
+    const visitorId = getClientIp(req);
+
+    const { data: chat, error: fetchError } = await supabase
+      .from('chats')
+      .select('id')
+      .eq('id', id)
+      .eq('visitor_id', visitorId)
+      .single();
+
+    if (fetchError || !chat) {
+      return NextResponse.json({ error: '对话不存在或无权删除' }, { status: 404 });
+    }
+
     const { error } = await supabase.from('chats').delete().eq('id', id);
 
     if (error) throw error;
