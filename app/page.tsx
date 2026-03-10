@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
@@ -38,8 +38,14 @@ function ChatContent() {
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false); // 小屏默认收起，大屏会通过 useEffect 设为 true
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const isLoading = status === 'submitted' || status === 'streaming';
+
+  // 每次消息更新（含流式输出）都滚到底部，便于看到最新回复
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   // 大屏默认展开侧栏，小屏默认收起
   useEffect(() => {
@@ -200,7 +206,7 @@ function ChatContent() {
                   </button>
                   <button
                     type="button"
-                    className="shrink-0 p-1.5 rounded text-zinc-500 hover:bg-zinc-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="shrink-0 p-1.5 rounded text-red-500 hover:bg-zinc-700 hover:text-red-400"
                     onClick={(e) => handleDeleteChat(e, c.id)}
                     title="删除对话"
                     aria-label="删除对话"
@@ -214,8 +220,13 @@ function ChatContent() {
         </div>
       </aside>
 
-      {/* 主聊天区 */}
-      <main className="relative flex flex-1 flex-col max-w-2xl mx-auto py-12 min-h-screen min-w-0">
+      {/* 主聊天区：小屏侧栏打开时留出左边距避免挡标题，侧栏收起时加大顶边距避免「对话列表」按钮挡标题 */}
+      <main
+        className={
+          'relative flex flex-1 flex-col max-w-2xl mx-auto py-12 min-h-screen min-w-0 ' +
+          (sidebarOpen ? 'max-md:ml-56' : 'max-md:pt-20')
+        }
+      >
         {/* 侧栏收起时显示「打开对话列表」按钮 */}
         {!sidebarOpen && (
           <button
@@ -241,7 +252,10 @@ function ChatContent() {
           {loadingMessages ? (
             <p className="text-center text-zinc-500 mt-20">加载对话中...</p>
           ) : (
-            <ChatMessages messages={messages} />
+            <>
+              <ChatMessages messages={messages} />
+              <div ref={messagesEndRef} aria-hidden="true" />
+            </>
           )}
         </div>
 
